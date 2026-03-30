@@ -33,9 +33,10 @@ jobs:
           node-version: lts/*
           cache: yarn
 
-      - name: Install Rust
-        uses: dtolnay/rust-action@stable
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: stable
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install dependencies (Ubuntu only)
