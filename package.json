@@ -12,8 +12,14 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "7z-wasm": "^1.2.0",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-opener": "^2",
+    "@types/jszip": "^3.4.1",
+    "ant-design-vue": "^4.2.6",
+    "fflate": "^0.8.2",
+    "jszip": "^3.10.1",
     "vite": "^8.0.3",
     "vite-plugin-vue-devtools": "^8.1.1",
     "vue": "^3.3.4",
