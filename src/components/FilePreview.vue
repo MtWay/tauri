@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { unzip, strFromU8 } from 'fflate';
-import SevenZip from '7z-wasm';
 import { listen } from '@tauri-apps/api/event';
 
 // 定义事件
