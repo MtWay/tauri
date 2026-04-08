@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import FilePreview from "./components/FilePreview.vue";
+import SplitScreenBrowser from "./components/SplitScreenBrowser.vue";
 
 // 当前页面
-const currentPage = ref<'home' | 'filePreview'>('home');
+const currentPage = ref<'home' | 'filePreview' | 'splitScreen'>('home');
 
 // 切换页面
-const switchPage = (page: 'home' | 'filePreview') => {
+const switchPage = (page: 'home' | 'filePreview' | 'splitScreen') => {
   currentPage.value = page;
 };
 </script>
@@ -30,6 +31,13 @@ const switchPage = (page: 'home' | 'filePreview') => {
           @click="switchPage('filePreview')"
         >
           📦 文件预览
+        </button>
+        <button 
+          class="nav-link" 
+          :class="{ active: currentPage === 'splitScreen' }"
+          @click="switchPage('splitScreen')"
+        >
+          🖥️ 分屏浏览器
         </button>
       </div>
     </nav>
@@ -63,6 +71,11 @@ const switchPage = (page: 'home' | 'filePreview') => {
       <!-- 文件预览页面 -->
       <div v-else-if="currentPage === 'filePreview'">
         <FilePreview />
+      </div>
+
+      <!-- 分屏浏览器页面 -->
+      <div v-else-if="currentPage === 'splitScreen'">
+        <SplitScreenBrowser />
       </div>
     </main>
   </div>
