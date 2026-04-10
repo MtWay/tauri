@@ -111,6 +111,12 @@ jobs:
       - name: Install frontend dependencies
         run: yarn install
 
+      - name: Initialize Android project
+        run: yarn tauri android init
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+
       - name: Build Android APK
         run: yarn tauri android build --apk
         env:
