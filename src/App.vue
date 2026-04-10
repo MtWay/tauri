@@ -138,7 +138,7 @@ const switchPage = (page: 'home' | 'filePreview' | 'splitScreen') => {
 /* 主内容区 */
 .main-content {
   flex: 1;
-  padding: 24px;
+  /* padding: 24px;  */
 }
 
 /* 首页 */
