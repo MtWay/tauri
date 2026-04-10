@@ -362,197 +362,202 @@ fn is_text_file(name: &str, content: &[u8]) -> bool {
     String::from_utf8(content[..check_len].to_vec()).is_ok()
 }
 
-// 创建带有新窗口处理器的内嵌 webview
+// 创建带有新窗口处理器的内嵌 webview（仅桌面端支持）
 #[tauri::command]
 async fn create_webview_with_handler(
-    window: tauri::Window,
-    label: String,
-    url: String,
-    initial_url: String,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
+    #[allow(unused_variables)] window: tauri::Window,
+    #[allow(unused_variables)] label: String,
+    #[allow(unused_variables)] url: String,
+    #[allow(unused_variables)] initial_url: String,
+    #[allow(unused_variables)] x: f64,
+    #[allow(unused_variables)] y: f64,
+    #[allow(unused_variables)] width: f64,
+    #[allow(unused_variables)] height: f64,
 ) -> Result<(), String> {
-    use tauri::WebviewUrl;
-    use tauri::webview::WebviewBuilder;
-
-    // 使用 WebviewBuilder 创建内嵌 webview
-    let webview_builder = WebviewBuilder::new(
-        label.clone(),
-        WebviewUrl::External(url.parse().map_err(|e| format!("无效的URL: {}", e))?)
-    );
-
-    // 添加 webview 到窗口（仅桌面端支持）
+    // 桌面端实现
     #[cfg(desktop)]
-    let webview = window
-        .add_child(
-            webview_builder,
-            tauri::LogicalPosition { x, y },
-            tauri::LogicalSize { width, height }
-        )
-        .map_err(|e| format!("创建webview失败: {}", e))?;
+    {
+        use tauri::WebviewUrl;
+        use tauri::webview::WebviewBuilder;
+
+        // 使用 WebviewBuilder 创建内嵌 webview
+        let webview_builder = WebviewBuilder::new(
+            label.clone(),
+            WebviewUrl::External(url.parse().map_err(|e| format!("无效的URL: {}", e))?)
+        );
+
+        // 添加 webview 到窗口
+        let webview = window
+            .add_child(
+                webview_builder,
+                tauri::LogicalPosition { x, y },
+                tauri::LogicalSize { width, height }
+            )
+            .map_err(|e| format!("创建webview失败: {}", e))?;
+
+        // 注入 JavaScript 来拦截 target="_blank" 链接点击，并同步登录状态
+        // 使用 window.__TAURI__.core.invoke 直接调用 Rust 命令
+        let js_code = format!(r#"
+            (function() {{
+                // 保存初始 URL，用于刷新
+                var initialUrl = '{}';
+                
+                // 安装链接拦截器
+                function installLinkInterceptor() {{
+                    // 移除旧的事件监听器（如果存在）
+                    if (window.__linkClickHandler) {{
+                        document.removeEventListener('click', window.__linkClickHandler, true);
+                    }}
+                    
+                    // 定义新的事件处理器
+                    window.__linkClickHandler = function(e) {{
+                        var target = e.target;
+                        // 向上查找最近的 A 标签
+                        while (target && target.tagName !== 'A') {{
+                            target = target.parentElement;
+                        }}
+                        if (target && target.tagName === 'A') {{
+                            var href = target.getAttribute('href');
+                            var targetAttr = target.getAttribute('target');
+                            // 如果是 target="_blank" 链接
+                            if (targetAttr === '_blank' && href) {{
+                                e.preventDefault();
+                                e.stopPropagation();
+                                // 使用 Tauri invoke 直接调用 Rust 命令
+                                if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {{
+                                    window.__TAURI__.core.invoke('open_external_url', {{ url: href }});
+                                }} else {{
+                                    // 备用方案：在当前窗口打开
+                                    window.location.href = href;
+                                }}
+                                return false;
+                            }}
+                        }}
+                    }};
+                    
+                    // 添加事件监听器（捕获阶段）
+                    document.addEventListener('click', window.__linkClickHandler, true);
+                    console.log('链接拦截器已安装/重新安装');
+                }}
+                
+                // 立即安装
+                installLinkInterceptor();
+                
+                // 监听 DOM 变化，为新添加的链接安装拦截器
+                if (!window.__mutationObserver) {{
+                    window.__mutationObserver = new MutationObserver(function(mutations) {{
+                        // DOM 变化时重新安装，确保新链接也被拦截
+                        installLinkInterceptor();
+                    }});
+                    window.__mutationObserver.observe(document.body, {{
+                        childList: true,
+                        subtree: true
+                    }});
+                }}
+                
+                // 登录状态检测与同步功能
+                function setupAuthSync() {{
+                    var domain = window.location.hostname;
+                    var webviewLabel = window.__TAURI_WEBVIEW_LABEL__ || '';
+                    
+                    // 存储上一次的登录状态哈希，用于检测变化
+                    window.__lastAuthHash = '';
+                    
+                    // 计算当前登录状态的哈希（简单拼接所有 auth 相关的 key-value）
+                    function calcAuthHash() {{
+                        var authData = [];
+                        for (var i = 0; i < localStorage.length; i++) {{
+                            var key = localStorage.key(i);
+                            if (key) {{
+                                var lowerKey = key.toLowerCase();
+                                if (lowerKey.includes('token') || 
+                                    lowerKey.includes('auth') || 
+                                    lowerKey.includes('session') || 
+                                    lowerKey.includes('user') || 
+                                    lowerKey.includes('login') ||
+                                    lowerKey.includes('credential')) {{
+                                    authData.push(key + '=' + localStorage.getItem(key));
+                                }}
+                            }}
+                        }}
+                        return authData.sort().join('|');
+                    }}
+                    
+                    // 检测登录状态变化并刷新其他页面
+                    function checkAuthChange() {{
+                        var currentHash = calcAuthHash();
+                        
+                        // 如果状态发生变化且不是首次检测
+                        if (window.__lastAuthHash && currentHash !== window.__lastAuthHash) {{
+                            console.log('检测到登录状态变化，通知 Rust 刷新其他页面');
+                            
+                            if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {{
+                                window.__TAURI__.core.invoke('refresh_webviews_by_domain', {{
+                                    domain: domain,
+                                    excludeLabel: webviewLabel,
+                                    initialUrl: initialUrl
+                                }}).catch(function(e) {{
+                                    console.log('刷新其他页面失败:', e);
+                                }});
+                            }}
+                        }}
+                        
+                        window.__lastAuthHash = currentHash;
+                    }}
+                    
+                    // 初始化哈希值
+                    window.__lastAuthHash = calcAuthHash();
+                    
+                    // 定期检测登录状态变化（每 3 秒）
+                    setInterval(checkAuthChange, 3000);
+                    
+                    // 监听 localStorage 变化事件（同一页面内的变化）
+                    window.addEventListener('storage', function(e) {{
+                        var lowerKey = e.key.toLowerCase();
+                        if (lowerKey.includes('token') || 
+                            lowerKey.includes('auth') || 
+                            lowerKey.includes('session') || 
+                            lowerKey.includes('user') || 
+                            lowerKey.includes('login') ||
+                            lowerKey.includes('credential')) {{
+                            console.log('localStorage 变化 detected:', e.key);
+                            // 立即检测变化
+                            setTimeout(checkAuthChange, 100);
+                        }}
+                    }});
+                }}
+                
+                // 延迟启动登录状态同步，等待页面加载完成
+                setTimeout(setupAuthSync, 2000);
+            }})();
+        "#, initial_url);
+
+        // 在页面加载完成后注入脚本
+        let webview_for_script = webview.clone();
+        let js_code_for_periodic = js_code.clone();
+        tauri::async_runtime::spawn(async move {
+            // 延迟 1 秒后注入脚本，确保页面已加载
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let _ = webview_for_script.eval(js_code);
+            
+            // 每 3 秒重新注入一次，确保动态内容也能被拦截
+            let webview_for_periodic = webview_for_script.clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    let _ = webview_for_periodic.eval(js_code_for_periodic.clone());
+                }
+            });
+        });
+
+        Ok(())
+    }
     
     // 移动端不支持内嵌 webview，返回错误提示
     #[cfg(not(desktop))]
-    return Err("移动端暂不支持内嵌 webview 功能".to_string());
-
-    // 注入 JavaScript 来拦截 target="_blank" 链接点击，并同步登录状态
-    // 使用 window.__TAURI__.core.invoke 直接调用 Rust 命令
-    let js_code = format!(r#"
-        (function() {{
-            // 保存初始 URL，用于刷新
-            var initialUrl = '{}';
-            
-            // 安装链接拦截器
-            function installLinkInterceptor() {{
-                // 移除旧的事件监听器（如果存在）
-                if (window.__linkClickHandler) {{
-                    document.removeEventListener('click', window.__linkClickHandler, true);
-                }}
-                
-                // 定义新的事件处理器
-                window.__linkClickHandler = function(e) {{
-                    var target = e.target;
-                    // 向上查找最近的 A 标签
-                    while (target && target.tagName !== 'A') {{
-                        target = target.parentElement;
-                    }}
-                    if (target && target.tagName === 'A') {{
-                        var href = target.getAttribute('href');
-                        var targetAttr = target.getAttribute('target');
-                        // 如果是 target="_blank" 链接
-                        if (targetAttr === '_blank' && href) {{
-                            e.preventDefault();
-                            e.stopPropagation();
-                            // 使用 Tauri invoke 直接调用 Rust 命令
-                            if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {{
-                                window.__TAURI__.core.invoke('open_external_url', {{ url: href }});
-                            }} else {{
-                                // 备用方案：在当前窗口打开
-                                window.location.href = href;
-                            }}
-                            return false;
-                        }}
-                    }}
-                }};
-                
-                // 添加事件监听器（捕获阶段）
-                document.addEventListener('click', window.__linkClickHandler, true);
-                console.log('链接拦截器已安装/重新安装');
-            }}
-            
-            // 立即安装
-            installLinkInterceptor();
-            
-            // 监听 DOM 变化，为新添加的链接安装拦截器
-            if (!window.__mutationObserver) {{
-                window.__mutationObserver = new MutationObserver(function(mutations) {{
-                    // DOM 变化时重新安装，确保新链接也被拦截
-                    installLinkInterceptor();
-                }});
-                window.__mutationObserver.observe(document.body, {{
-                    childList: true,
-                    subtree: true
-                }});
-            }}
-            
-            // 登录状态检测与同步功能
-            function setupAuthSync() {{
-                var domain = window.location.hostname;
-                var webviewLabel = window.__TAURI_WEBVIEW_LABEL__ || '';
-                
-                // 存储上一次的登录状态哈希，用于检测变化
-                window.__lastAuthHash = '';
-                
-                // 计算当前登录状态的哈希（简单拼接所有 auth 相关的 key-value）
-                function calcAuthHash() {{
-                    var authData = [];
-                    for (var i = 0; i < localStorage.length; i++) {{
-                        var key = localStorage.key(i);
-                        if (key) {{
-                            var lowerKey = key.toLowerCase();
-                            if (lowerKey.includes('token') || 
-                                lowerKey.includes('auth') || 
-                                lowerKey.includes('session') || 
-                                lowerKey.includes('user') || 
-                                lowerKey.includes('login') ||
-                                lowerKey.includes('credential')) {{
-                                authData.push(key + '=' + localStorage.getItem(key));
-                            }}
-                        }}
-                    }}
-                    return authData.sort().join('|');
-                }}
-                
-                // 检测登录状态变化并刷新其他页面
-                function checkAuthChange() {{
-                    var currentHash = calcAuthHash();
-                    
-                    // 如果状态发生变化且不是首次检测
-                    if (window.__lastAuthHash && currentHash !== window.__lastAuthHash) {{
-                        console.log('检测到登录状态变化，通知 Rust 刷新其他页面');
-                        
-                        if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {{
-                            window.__TAURI__.core.invoke('refresh_webviews_by_domain', {{
-                                domain: domain,
-                                excludeLabel: webviewLabel,
-                                initialUrl: initialUrl
-                            }}).catch(function(e) {{
-                                console.log('刷新其他页面失败:', e);
-                            }});
-                        }}
-                    }}
-                    
-                    window.__lastAuthHash = currentHash;
-                }}
-                
-                // 初始化哈希值
-                window.__lastAuthHash = calcAuthHash();
-                
-                // 定期检测登录状态变化（每 3 秒）
-                setInterval(checkAuthChange, 3000);
-                
-                // 监听 localStorage 变化事件（同一页面内的变化）
-                window.addEventListener('storage', function(e) {{
-                    var lowerKey = e.key.toLowerCase();
-                    if (lowerKey.includes('token') || 
-                        lowerKey.includes('auth') || 
-                        lowerKey.includes('session') || 
-                        lowerKey.includes('user') || 
-                        lowerKey.includes('login') ||
-                        lowerKey.includes('credential')) {{
-                        console.log('localStorage 变化 detected:', e.key);
-                        // 立即检测变化
-                        setTimeout(checkAuthChange, 100);
-                    }}
-                }});
-            }}
-            
-            // 延迟启动登录状态同步，等待页面加载完成
-            setTimeout(setupAuthSync, 2000);
-        }})();
-    "#, initial_url);
-
-    // 在页面加载完成后注入脚本
-    let webview_for_script = webview.clone();
-    let js_code_for_periodic = js_code.clone();
-    tauri::async_runtime::spawn(async move {
-        // 延迟 1 秒后注入脚本，确保页面已加载
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        let _ = webview_for_script.eval(js_code);
-        
-        // 每 3 秒重新注入一次，确保动态内容也能被拦截
-        let webview_for_periodic = webview_for_script.clone();
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(3));
-                let _ = webview_for_periodic.eval(js_code_for_periodic.clone());
-            }
-        });
-    });
-
-    Ok(())
+    {
+        Err("移动端暂不支持内嵌 webview 功能".to_string())
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
