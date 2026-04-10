@@ -123,6 +123,21 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
           NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
 
+      - name: Sign Android APK (Debug)
+        run: |
+          # 生成调试密钥库（如果不存在）
+          if [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          
+          # 找到 APK 文件并签名
+          for apk in src-tauri/gen/android/app/build/outputs/apk/*/release/*.apk; do
+            if [ -f "$apk" ]; then
+              echo "Signing $apk"
+              jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 -keystore debug.keystore -storepass android -keypass android "$apk" androiddebugkey
+            fi
+          done
+
       - name: Upload Android APK to Release
         uses: softprops/action-gh-release@v1
         with:
