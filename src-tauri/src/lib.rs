@@ -383,7 +383,8 @@ async fn create_webview_with_handler(
         WebviewUrl::External(url.parse().map_err(|e| format!("无效的URL: {}", e))?)
     );
 
-    // 添加 webview 到窗口
+    // 添加 webview 到窗口（仅桌面端支持）
+    #[cfg(desktop)]
     let webview = window
         .add_child(
             webview_builder,
@@ -391,6 +392,10 @@ async fn create_webview_with_handler(
             tauri::LogicalSize { width, height }
         )
         .map_err(|e| format!("创建webview失败: {}", e))?;
+    
+    // 移动端不支持内嵌 webview，返回错误提示
+    #[cfg(not(desktop))]
+    return Err("移动端暂不支持内嵌 webview 功能".to_string());
 
     // 注入 JavaScript 来拦截 target="_blank" 链接点击，并同步登录状态
     // 使用 window.__TAURI__.core.invoke 直接调用 Rust 命令
