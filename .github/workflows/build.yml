@@ -119,6 +119,10 @@ jobs:
 
       - name: Sign Android APK (Debug)
         run: |
+          # 查找所有生成的 APK 文件
+          echo "查找 APK 文件..."
+          find src-tauri -name "*.apk" -type f
+          
           # 生成调试密钥库（如果不存在）
           if [ ! -f debug.keystore ]; then
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
@@ -137,9 +141,13 @@ jobs:
               echo "签名完成: $apk"
             fi
           done
+          
+          # 再次查找签名后的 APK
+          echo "签名后的 APK 文件:"
+          find src-tauri -name "*.apk" -type f
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          path: src-tauri/gen/android/**/*.apk
