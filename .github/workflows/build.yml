@@ -126,7 +126,8 @@ jobs:
           # 生成调试密钥库
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           
-          # 签名所有 APK 文件
+          # 签名并重命名 APK 文件
+          mkdir -p release-apk
           for apk in $(find src-tauri -name "*.apk" -type f); do
             echo "正在签名: $apk"
             # 使用 apksigner 签名
@@ -135,6 +136,9 @@ jobs:
             # 验证签名
             if $ANDROID_SDK_ROOT/build-tools/33.0.0/apksigner verify "$apk"; then
               echo "✓ 签名验证成功: $apk"
+              # 复制并重命名到 release-apk 目录
+              cp "$apk" "release-apk/tauri-app-android.apk"
+              echo "✓ 已复制到 release-apk/tauri-app-android.apk"
             else
               echo "✗ 签名验证失败: $apk"
               exit 1
@@ -145,4 +149,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: src-tauri/**/*.apk
+          path: release-apk/*.apk

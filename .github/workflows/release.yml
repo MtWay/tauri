@@ -19,8 +19,6 @@ jobs:
             args: '--target aarch64-apple-darwin'
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
-          - platform: 'ubuntu-22.04'
-            args: ''
           - platform: 'windows-latest'
             args: ''
 
@@ -42,12 +40,6 @@ jobs:
       - name: Install Rust target (macOS)
         if: matrix.platform == 'macos-latest'
         run: rustup target add ${{ matrix.args == '--target aarch64-apple-darwin' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }}
-
-      - name: Install dependencies (Ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Install frontend dependencies
         run: yarn install
@@ -132,7 +124,8 @@ jobs:
           # 生成调试密钥库
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           
-          # 签名所有 APK 文件
+          # 签名并重命名 APK 文件
+          mkdir -p release-apk
           for apk in $(find src-tauri -name "*.apk" -type f); do
             echo "正在签名: $apk"
             # 使用 apksigner 签名
@@ -141,6 +134,9 @@ jobs:
             # 验证签名
             if $ANDROID_SDK_ROOT/build-tools/33.0.0/apksigner verify "$apk"; then
               echo "✓ 签名验证成功: $apk"
+              # 复制并重命名到 release-apk 目录
+              cp "$apk" "release-apk/tauri-app-android.apk"
+              echo "✓ 已复制到 release-apk/tauri-app-android.apk"
             else
               echo "✗ 签名验证失败: $apk"
               exit 1
@@ -155,6 +151,6 @@ jobs:
           draft: true
           prerelease: false
           files: |
-            src-tauri/**/*.apk
+            release-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
