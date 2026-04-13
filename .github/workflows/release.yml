@@ -130,11 +130,17 @@ jobs:
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
           
-          # 找到 APK 文件并签名
+          # 找到 APK 文件并使用 apksigner 签名（Android 推荐方式）
           for apk in src-tauri/gen/android/app/build/outputs/apk/*/release/*.apk; do
             if [ -f "$apk" ]; then
               echo "Signing $apk"
-              jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 -keystore debug.keystore -storepass android -keypass android "$apk" androiddebugkey
+              # 先使用 jarsigner 签名
+              jarsigner -sigalg SHA256withRSA -digestalg SHA-256 -keystore debug.keystore -storepass android -keypass android "$apk" androiddebugkey
+              # 然后使用 apksigner 对齐和验证
+              $ANDROID_SDK_ROOT/build-tools/33.0.0/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android "$apk"
+              # 验证签名
+              $ANDROID_SDK_ROOT/build-tools/33.0.0/apksigner verify "$apk"
+              echo "签名完成: $apk"
             fi
           done
 
